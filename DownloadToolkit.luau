@@ -1,4 +1,7 @@
---/ Services
+--// Author: okzyrox
+--/ Date: 2025/01/27
+
+--// Services
 local fs = require("@lune/fs")
 local roblox = require("@lune/roblox")
 local net = require("@lune/net")
@@ -77,11 +80,11 @@ local function SaveMeshModels(FolderName, Tbl)
             continue
         end
         local AssetId = string.gsub(tostring(Mesh.MeshId), "rbxassetid://", "")
-        local RawMesh = net.request({ --BinaryString
+        local RawMesh = net.request({
             url = string.format(AssetUrl, AssetId),
             method = "Get"
         })
-        local MeshBinary = RawMesh["body"]
+        local MeshBinary = RawMesh["body"] -- binary
 
         fs.writeFile(DownloadLocation .. "RawMeshes/" .. FolderName .. "/" .. Mesh.Name .. ".mesh", MeshBinary)
         CompletedDownloads = CompletedDownloads + 1
