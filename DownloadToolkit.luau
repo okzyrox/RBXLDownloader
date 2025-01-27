@@ -16,6 +16,7 @@ local AssetsKinds = { Mesh = "mesh", Texture = "png", Animation = "rbxm" }
 local GamePath = ""
 local ServerStorageFolderName = ""
 local DefaultWaitTime = 1
+local OnlyDoThis = nil
 
 --/ Functions
 
@@ -71,6 +72,14 @@ end
 --/ Processing
 
 local function ProcessMesh(objectName, meshObj)
+	if fs.isDir(DownloadLocation .. "Meshes/" .. objectName) then
+		if fs.isFile(DownloadLocation .. "Meshes/" .. objectName .. "/" .. meshObj.Name) then
+			print("Mesh at: " .. DownloadLocation .. "Meshes/" .. objectName .. "/" .. meshObj.Name .. " already exists, skipping")
+			return
+		end
+	else
+		fs.writeDir(DownloadLocation .. "Meshes/" .. objectName)
+	end
 	local folder = DownloadLocation .. "Meshes/" .. objectName .. "/" .. meshObj.Name
 	local data = DownloadAsset(meshObj.MeshId)
 	SaveAsset(folder, meshObj.Name, data, AssetsKinds.Mesh)
@@ -91,17 +100,19 @@ local function ProcessMesh(objectName, meshObj)
 		end
 		local tdata = DownloadAsset(tid)
 		SaveAsset(folder .. "/Textures", tid, tdata, AssetsKinds.Texture)
+		task.wait(DefaultWaitTime)
 	end
 end
 
 local function ProcessAnimation(objectName, animObj)
-	local data = DownloadAsset(animObj.AnimationId)
 	local animName = (animObj.Name and animObj.Name ~= "") and animObj.Name or "Animation"
 	if fs.isFile(DownloadLocation .. "Animations/" .. objectName .. "/" .. animName .. ".rbxm") then
 		print("Animation at: " .. DownloadLocation .. "Animations/" .. objectName .. "/" .. animName .. ".rbxm" .. " already exists, skipping")
 		return
 	end
+	local data = DownloadAsset(animObj.AnimationId)
 	SaveAsset(DownloadLocation .. "Animations/" .. objectName, animName, data, AssetsKinds.Animation)
+	task.wait(DefaultWaitTime)
 end
 
 local function ProcessTexture(objectName, texObj)
@@ -116,6 +127,7 @@ local function ProcessTexture(objectName, texObj)
 		tid = tid:gsub("?id=", "")
 		local data = DownloadAsset(tid)
 		SaveAsset(DownloadLocation .. "Textures/" .. objectName, tid, data, AssetsKinds.Texture)
+		task.wait(DefaultWaitTime)
 	end
 end
 
@@ -124,9 +136,10 @@ end
 if not (#process.args > 0) then
 	print("------------------------------")
 	print("   RBXL Downloader")
-	print("   Usage: DownloadToolkit.luau <path to game.rbxl> <ServerStorage folder> [debug=bool] [waitTime=number]")
+	print("   Usage: DownloadToolkit.luau <path to game.rbxl> <ServerStorage folder> [debug=bool] [waitTime=number] [only=string]")
 	print("   Anything in square brackets is optional.")
 	print("   Default wait time is 1 second")
+	print("   'only' is used to only download a specific object by name (in the event you need to redownload it)")
 	print("------------------------------")
 	return
 elseif process.args[1] == nil then
@@ -135,12 +148,14 @@ elseif process.args[1] == nil then
 elseif process.args[2] == nil then
 	print("Usage: DownloadToolkit.luau <path to game.rbxl> <ServerStorage folder> [debug=bool] [waitTime=number]")
 	error("No ServerStorage folder name provided")
-elseif process.args[3] == nil or process.args[4] == nil then
+elseif process.args[3] == nil or process.args[4] == nil or process.args[5] == nil then
 	GamePath = process.args[1]
 	ServerStorageFolderName = process.args[2]
 else
 	GamePath = process.args[1]
 	ServerStorageFolderName = process.args[2]
+	print("Config:")
+	print("------------------------------")
 	if process.args[3] == "true" then
 		DebugPrints = true
 		print("Debug prints enabled")
@@ -149,6 +164,11 @@ else
 		DefaultWaitTime = tonumber(process.args[4])
 		print("Default wait time set to: " .. DefaultWaitTime)
 	end
+	if process.args[5] then
+		OnlyDoThis = process.args[5]
+		print("Only downloading: " .. OnlyDoThis)
+	end
+	print("------------------------------")
 end
 
 if not fs.isFile(GamePath) then
@@ -168,11 +188,11 @@ if not fs.isDir(DownloadLocation) then
 	fs.writeDir(DownloadLocation)
 end
 DownloadLocation = DownloadLocation .. "/"
-
-print("Loading game file")
+print("Loading Game file")
 local file = fs.readFile(GamePath)
 local game = roblox.deserializePlace(file)
 print("Game file loaded")
+print("------------------------------")
 task.wait(1)
 
 local ServerStorage = game:GetService("ServerStorage")
@@ -183,11 +203,15 @@ end
 
 local function SearchAssets()
 	for _, Object in pairs(ObjectSearchLocation:GetChildren()) do
+		if OnlyDoThis then
+			if Object.Name ~= OnlyDoThis then
+				continue
+			end
+		end
 		local meshList = ExtractMeshes(Object)
 		if #meshList > 0 then
 			for _, meshObj in pairs(meshList) do
 				ProcessMesh(Object.Name, meshObj)
-				task.wait(DefaultWaitTime)
 			end
 		end
 		for _, child in pairs(Object:GetChildren()) do
@@ -197,18 +221,17 @@ local function SearchAssets()
 					continue
 				end
 				ProcessAnimation(Object.Name, child)
-				task.wait(DefaultWaitTime)
 			elseif (child:IsA("Decal") or child:IsA("Texture")) and (child.TextureId or child.TextureID) then
 				if fs.isFile(DownloadLocation .. "Textures/" .. Object.Name .. "/" .. child.Name .. ".png") then
 					print("Texture at: " .. DownloadLocation .. "Textures/" .. Object.Name .. "/" .. child.Name .. ".png" .. " already exists, skipping")
 					continue
 				end
 				ProcessTexture(Object.Name, child)
-				task.wait(DefaultWaitTime)
 			end
 		end
 	end
 end
 
 SearchAssets()
+print("------------------------------")
 print("Finished Execution")
