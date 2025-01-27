@@ -100,13 +100,13 @@ local GamePath = ""
 local ServerStorageFolderName = ""
 
 if not (#process.args > 0) then
-    print("Usage: GetMeshes.luau <path to game.rbxl> <name of ServerStorage folder to check>")
+    print("Usage: DownloadToolkit.luau <path to game.rbxl> <name of ServerStorage folder to check>")
     error("No arguments provided")
 elseif process.args[1] == nil then
-    print("Usage: GetMeshes.luau <path to game.rbxl> <name of ServerStorage folder to check>")
+    print("Usage: DownloadToolkit.luau <path to game.rbxl> <name of ServerStorage folder to check>")
     error("No path provided")
 elseif process.args[2] == nil then
-    print("Usage: GetMeshes.luau <path to game.rbxl> <name of ServerStorage folder to check>")
+    print("Usage: DownloadToolkit.luau <path to game.rbxl> <name of ServerStorage folder to check>")
     error("No ServerStorage folder name provided")
 elseif process.args[3] == nil then
     GamePath = process.args[1]
