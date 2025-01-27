@@ -1,7 +1,7 @@
-- [ ] Texture Saving
+- [x] Texture Saving
   - Stored as `<TextureId>.ext`
 
-- [ ] Animation Saving
+- [x] Animation Saving
   - Stored as RBXMs, Either by Name, Uploaded Name or Id
 
 - [ ] Support for More Folders / Other places than ServerStorage

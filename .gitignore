@@ -1,3 +1,5 @@
 .vscode/**
 game/**
+# if looking for ratelimited assets using smthing like vscode
+# comment then search for "Too many assets requested"
 Downloads/**

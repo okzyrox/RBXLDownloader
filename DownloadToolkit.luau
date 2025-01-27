@@ -10,180 +10,205 @@ local process = require("@lune/process")
 
 --/ Vars
 local AssetUrl = "https://assetdelivery.roblox.com/v1/asset/?id=%s"
-
 local DebugPrints = false
 local DownloadLocation = ""
+local AssetsKinds = { Mesh = "mesh", Texture = "png", Animation = "rbxm" }
+local GamePath = ""
+local ServerStorageFolderName = ""
+local DefaultWaitTime = 1
 
---/ Func
+--/ Functions
 
 local function dprint(...)
-    if not DebugPrints then
-        return
-    end
-    print(...)
+	if not DebugPrints then
+		return
+	end
+	print(...)
 end
 
-local function GetFileName(Path)
-    local filename, extension = Path:match("^.+/(.+)%.(.+)$")
-    
-    return filename
+local function DownloadAsset(id)
+	dprint("Asset: " .. id)
+	id = tostring(id):gsub("rbxassetid://", "")
+	local RawAsset = net.request({
+		url = string.format(AssetUrl, id),
+		method = "Get",
+	})
+	return RawAsset.body
 end
 
-
---/ Meshes
-local function GetMeshes(Instance)
-    local Meshes = {}
-    for _, Object in pairs(Instance:GetChildren()) do
-        if Object:IsA("MeshPart") then
-            table.insert(Meshes, Object)
-        elseif Object:IsA("Model") then
-            for _, MeshPart in pairs(Object:GetChildren()) do
-                if MeshPart:IsA("MeshPart") then
-                    table.insert(Meshes, MeshPart)
-                end
-            end
-        end
-    end
-    return Meshes
+local function SaveAsset(folder, assetSaveName, data, ext)
+	if not fs.isDir(folder) then
+		fs.writeDir(folder)
+	end
+	assetSaveName = assetSaveName:gsub("http://www.roblox.com/asset/?id=", "", 1)
+    local location = folder .. "/" .. assetSaveName .. "." .. ext
+    dprint("Saving asset to: " .. location .. " as " .. assetSaveName)
+	if fs.isFile(location) then
+		dprint("File at: " .. location ..  " already exists, skipping")
+		return
+	end
+	fs.writeFile(location, data)
 end
 
-local function SaveMeshXMLs(FolderName, Tbl)
-    if not fs.isDir(DownloadLocation .. "MeshXMLs") then
-        fs.writeDir(DownloadLocation .. "MeshXMLs")
-    end
-    for _, Mesh in pairs(Tbl) do
-        if not fs.isFile(DownloadLocation .. "MeshXMLs/" .. FolderName .. "/" .. Mesh.Name .. ".rbxmx") then
-            dprint("Mesh " .. Mesh.Name .. " is already saved as xml")
-            continue
-        end
-        local MeshData = roblox.serializeModel({Mesh}, true)
-        fs.writeFile(DownloadLocation .. "MeshXMLs/" .. FolderName .. "/" .. Mesh.Name .. ".rbxmx", MeshData)
-    end
+-- Objects
+
+local function ExtractMeshes(instance)
+	local Meshes = {}
+	for _, child in pairs(instance:GetChildren()) do
+		if child:IsA("MeshPart") then
+			table.insert(Meshes, child)
+		elseif child:IsA("Model") then
+			for _, m in pairs(child:GetChildren()) do
+				if m:IsA("MeshPart") then
+					table.insert(Meshes, m)
+				end
+			end
+		end
+	end
+	return Meshes
 end
 
-local function SaveMeshModels(FolderName, Tbl)
-    local CompletedDownloads = 0
-    local TotalDownloads = #Tbl
-    if not fs.isDir(DownloadLocation .. "RawMeshes") then
-        fs.writeDir(DownloadLocation .. "RawMeshes")
-    end
-    for _, Mesh in pairs(Tbl) do
-        --print("Getting raw mesh for " .. Mesh.Name)
-        print("Downloaded: " .. CompletedDownloads .. "/" .. TotalDownloads .. " (" .. Mesh.Name .. ")")
-        if not Mesh.MeshId then
-            dprint("Mesh " .. Mesh.Name .. " does not have a MeshId - skipping")
-            continue
-        end
-        if fs.isFile(DownloadLocation .. "RawMeshes/" .. FolderName .. "/" .. Mesh.Name .. ".mesh") then
-            dprint("Mesh " .. Mesh.Name .. " already downloaded")
-            CompletedDownloads = CompletedDownloads + 1
-            continue
-        end
-        local AssetId = string.gsub(tostring(Mesh.MeshId), "rbxassetid://", "")
-        local RawMesh = net.request({
-            url = string.format(AssetUrl, AssetId),
-            method = "Get"
-        })
-        local MeshBinary = RawMesh["body"] -- binary
+--/ Processing
 
-        fs.writeFile(DownloadLocation .. "RawMeshes/" .. FolderName .. "/" .. Mesh.Name .. ".mesh", MeshBinary)
-        CompletedDownloads = CompletedDownloads + 1
-        task.wait(1) -- Im assuming theres some ratelimiting
-        -- so we do a 1sec delay just in case
-        -- i havent gotten any even when bulk downloading all of them but still
-    end
+local function ProcessMesh(objectName, meshObj)
+	local folder = DownloadLocation .. "Meshes/" .. objectName .. "/" .. meshObj.Name
+	local data = DownloadAsset(meshObj.MeshId)
+	SaveAsset(folder, meshObj.Name, data, AssetsKinds.Mesh)
+	local meshXml = roblox.serializeModel({ meshObj }, true)
+	if fs.isFile(DownloadLocation .. "MeshXMLs/" .. objectName .. "/" .. meshObj.Name .. ".rbxmx") then
+		print("Mesh XML at: " .. DownloadLocation .. "MeshXMLs/" .. objectName .. "/" .. meshObj.Name .. ".rbxmx" .. " already exists, skipping")
+	else
+		SaveAsset(DownloadLocation .. "MeshXMLs/" .. objectName, meshObj.Name, meshXml, "rbxmx")
+	end
+	if meshObj.TextureID and meshObj.TextureID ~= "" then
+		local tid = tostring(meshObj.TextureID):gsub("rbxassetid://", "")
+		tid = tid:gsub("http://www.roblox.com/asset/", "")
+		tid = tid:gsub("?id=", "")
+		--print(tid)
+		if fs.isFile(folder .. "/Textures/" .. tid .. ".png") then
+			print("Texture at: " .. folder .. "/Textures/" .. tid .. ".png" .. " already exists, skipping")
+			return
+		end
+		local tdata = DownloadAsset(tid)
+		SaveAsset(folder .. "/Textures", tid, tdata, AssetsKinds.Texture)
+	end
+end
+
+local function ProcessAnimation(objectName, animObj)
+	local data = DownloadAsset(animObj.AnimationId)
+	local animName = (animObj.Name and animObj.Name ~= "") and animObj.Name or "Animation"
+	if fs.isFile(DownloadLocation .. "Animations/" .. objectName .. "/" .. animName .. ".rbxm") then
+		print("Animation at: " .. DownloadLocation .. "Animations/" .. objectName .. "/" .. animName .. ".rbxm" .. " already exists, skipping")
+		return
+	end
+	SaveAsset(DownloadLocation .. "Animations/" .. objectName, animName, data, AssetsKinds.Animation)
+end
+
+local function ProcessTexture(objectName, texObj)
+	local tid = texObj.TextureId or texObj.TextureID
+	if fs.isFile(DownloadLocation .. "Textures/" .. objectName .. "/" .. texObj.Name .. ".png") then
+		print("Texture at: " .. DownloadLocation .. "Textures/" .. objectName .. "/" .. texObj.Name .. ".png" .. " already exists, skipping")
+		return
+	end
+	if tid and tid ~= "" then
+        tid = tostring(tid):gsub("rbxassetid://", "")
+        tid = tid:gsub("http://www.roblox.com/asset/", "") -- hacky method due to how gsub works
+		tid = tid:gsub("?id=", "")
+		local data = DownloadAsset(tid)
+		SaveAsset(DownloadLocation .. "Textures/" .. objectName, tid, data, AssetsKinds.Texture)
+	end
 end
 
 --/ Begin
 
-local GamePath = ""
-local ServerStorageFolderName = ""
-
 if not (#process.args > 0) then
-    print("Usage: DownloadToolkit.luau <path to game.rbxl> <name of ServerStorage folder to check>")
-    error("No arguments provided")
+	print("------------------------------")
+	print("   RBXL Downloader")
+	print("   Usage: DownloadToolkit.luau <path to game.rbxl> <ServerStorage folder> [debug=bool] [waitTime=number]")
+	print("   Anything in square brackets is optional.")
+	print("   Default wait time is 1 second")
+	print("------------------------------")
+	return
 elseif process.args[1] == nil then
-    print("Usage: DownloadToolkit.luau <path to game.rbxl> <name of ServerStorage folder to check>")
-    error("No path provided")
+	print("Usage: DownloadToolkit.luau <path to game.rbxl> <ServerStorage folder> [debug=bool] [waitTime=number]")
+	error("No path provided")
 elseif process.args[2] == nil then
-    print("Usage: DownloadToolkit.luau <path to game.rbxl> <name of ServerStorage folder to check>")
-    error("No ServerStorage folder name provided")
-elseif process.args[3] == nil then
-    GamePath = process.args[1]
-    ServerStorageFolderName = process.args[2]
+	print("Usage: DownloadToolkit.luau <path to game.rbxl> <ServerStorage folder> [debug=bool] [waitTime=number]")
+	error("No ServerStorage folder name provided")
+elseif process.args[3] == nil or process.args[4] == nil then
+	GamePath = process.args[1]
+	ServerStorageFolderName = process.args[2]
 else
-    GamePath = process.args[1]
-    ServerStorageFolderName = process.args[2]
-    if process.args[3] == "true" then
-        DebugPrints = true
-        print("Debug prints enabled")
-    else
-        DebugPrints = false
-    end
+	GamePath = process.args[1]
+	ServerStorageFolderName = process.args[2]
+	if process.args[3] == "true" then
+		DebugPrints = true
+		print("Debug prints enabled")
+	end
+	if process.args[4] then
+		DefaultWaitTime = tonumber(process.args[4])
+		print("Default wait time set to: " .. DefaultWaitTime)
+	end
 end
 
 if not fs.isFile(GamePath) then
-    error("Game file does not exist")
+	error("Game file does not exist")
+end
+
+local function GetFileName(path)
+	local filename, ext = path:match("^.+/(.+)%.(.+)$")
+	return filename
 end
 
 DownloadLocation = "Downloads/" .. GetFileName(GamePath)
+if not fs.isDir("Downloads") then
+	fs.writeDir("Downloads")
+end
+if not fs.isDir(DownloadLocation) then
+	fs.writeDir(DownloadLocation)
+end
+DownloadLocation = DownloadLocation .. "/"
 
 print("Loading game file")
 local file = fs.readFile(GamePath)
 local game = roblox.deserializePlace(file)
 print("Game file loaded")
-
-task.wait(2)
+task.wait(1)
 
 local ServerStorage = game:GetService("ServerStorage")
-
-if not fs.isDir("Downloads") then
-    fs.writeDir("Downloads")
-end
-
-if not fs.isDir(DownloadLocation) then
-    fs.writeDir(DownloadLocation)
-end
-
-DownloadLocation = DownloadLocation .. "/"
-
--- Get Objects
 local ObjectSearchLocation = ServerStorage:FindFirstChild(ServerStorageFolderName)
-if ObjectSearchLocation == nil then
-    error("Object search location was not found")
+if not ObjectSearchLocation then
+	error("Object search location was not found")
 end
 
-local ObjectMeshes = {}
-local MeshCount = {}
--- `Object` is a model, containing meshes
-for _, Object: Instance in pairs(ObjectSearchLocation:GetChildren()) do
-    ObjectMeshes[Object.Name] = {}
-    MeshCount[Object.Name] = 0
-    dprint("Getting meshes for " .. Object.Name)
-    for _, Mesh in pairs(GetMeshes(Object)) do
-        table.insert(ObjectMeshes[Object.Name], Mesh)
-        MeshCount[Object.Name] = MeshCount[Object.Name] + 1
-    end
-    dprint("Found " .. MeshCount[Object.Name] .. " meshes for " .. Object.Name)
+local function SearchAssets()
+	for _, Object in pairs(ObjectSearchLocation:GetChildren()) do
+		local meshList = ExtractMeshes(Object)
+		if #meshList > 0 then
+			for _, meshObj in pairs(meshList) do
+				ProcessMesh(Object.Name, meshObj)
+				task.wait(DefaultWaitTime)
+			end
+		end
+		for _, child in pairs(Object:GetChildren()) do
+			if child:IsA("Animation") and child.AnimationId then
+				if fs.isFile(DownloadLocation .. "Animations/" .. Object.Name .. "/" .. child.Name .. ".rbxm") then
+					print("Animation at: " .. DownloadLocation .. "Animations/" .. Object.Name .. "/" .. child.Name .. ".rbxm" .. " already exists, skipping")
+					continue
+				end
+				ProcessAnimation(Object.Name, child)
+				task.wait(DefaultWaitTime)
+			elseif (child:IsA("Decal") or child:IsA("Texture")) and (child.TextureId or child.TextureID) then
+				if fs.isFile(DownloadLocation .. "Textures/" .. Object.Name .. "/" .. child.Name .. ".png") then
+					print("Texture at: " .. DownloadLocation .. "Textures/" .. Object.Name .. "/" .. child.Name .. ".png" .. " already exists, skipping")
+					continue
+				end
+				ProcessTexture(Object.Name, child)
+				task.wait(DefaultWaitTime)
+			end
+		end
+	end
 end
 
-for ObjectName, ObjectMeshList in pairs(ObjectMeshes) do
-    if not fs.isDir(DownloadLocation .. "MeshXMLs/" .. ObjectName) then
-        fs.writeDir(DownloadLocation .. "MeshXMLs/" .. ObjectName)
-    end
-    if not fs.isDir(DownloadLocation .. "RawMeshes/" .. ObjectName) then
-        if #ObjectMeshList == 0 then
-            dprint("Object " .. ObjectName .. " has no meshes")
-            continue
-        end
-        fs.writeDir(DownloadLocation .. "RawMeshes/" .. ObjectName)
-    end
-
-    dprint("Writing meshes for " .. ObjectName)
-    SaveMeshXMLs(ObjectName, ObjectMeshList)
-    print("Downloading Meshes for " .. ObjectName)
-    SaveMeshModels(ObjectName, ObjectMeshList)
-    
-end
-
+SearchAssets()
 print("Finished Execution")
