@@ -127,11 +127,14 @@ if not fs.isFile(GamePath) then
 end
 
 DownloadLocation = "Downloads/" .. GetFileName(GamePath)
+
 print("Loading game file")
 local file = fs.readFile(GamePath)
 local game = roblox.deserializePlace(file)
 print("Game file loaded")
+
 task.wait(2)
+
 local ServerStorage = game:GetService("ServerStorage")
 
 if not fs.isDir("Downloads") then
@@ -144,7 +147,7 @@ end
 
 DownloadLocation = DownloadLocation .. "/"
 
--- Get Anomalies
+-- Get Objects
 local ObjectSearchLocation = ServerStorage:FindFirstChild(ServerStorageFolderName)
 if ObjectSearchLocation == nil then
     error("Object search location was not found")
@@ -170,7 +173,7 @@ for ObjectName, ObjectMeshList in pairs(ObjectMeshes) do
     end
     if not fs.isDir(DownloadLocation .. "RawMeshes/" .. ObjectName) then
         if #ObjectMeshList == 0 then
-            dprint("Anomaly " .. ObjectName .. " has no meshes")
+            dprint("Object " .. ObjectName .. " has no meshes")
             continue
         end
         fs.writeDir(DownloadLocation .. "RawMeshes/" .. ObjectName)
@@ -182,3 +185,5 @@ for ObjectName, ObjectMeshList in pairs(ObjectMeshes) do
     SaveMeshModels(ObjectName, ObjectMeshList)
     
 end
+
+print("Finished Execution")
